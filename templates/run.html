@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% block title %}{{ name }} — Prosthetic pipeline{% endblock %}
+{% block content %}
+{% if data.status == "running" %}<meta http-equiv="refresh" content="5">{% endif %}
+
+<p style="margin-top:0"><a href="/">&larr; all runs</a></p>
+
+<div class="card">
+  <h2 style="word-break:break-all">{{ name }}</h2>
+  <div>
+    {% if data.status == "done" %}<span class="chip ok">done in {{ data.elapsed_s }} s</span>
+    {% elif data.status == "running" %}<span class="chip run">running…</span>
+    {% else %}<span class="chip bad">failed</span>{% endif %}
+    {% if data.joint %}<span class="chip hero">{{ data.side }} {{ data.joint }}</span>{% endif %}
+    {% if data.rmse_deg is defined and data.rmse_deg is not none %}<span class="chip">RMSE {{ data.rmse_deg }}&deg;{% if data.joints %} (worst joint){% endif %}</span>{% endif %}
+    {% if data.rom_deg %}<span class="chip">ROM {{ data.rom_deg[0] }}–{{ data.rom_deg[1] }}&deg;</span>{% endif %}
+    {% if data.mechanism and not data.joints %}<span class="chip">{{ data.mechanism.F_class_N }} N / {{ data.mechanism.v_class_mm_s }} mm/s</span>
+    <span class="chip">stroke {{ data.mechanism.stroke_mm }} mm</span>{% endif %}
+    {% if data.actuator and not data.joints %}<span class="chip">{{ data.actuator.recommended }} &middot; {{ data.actuator.motor }}</span>
+    <span class="chip">~{{ data.actuator.mass_g }} g &middot; {{ data.actuator.battery_h }} h battery</span>{% endif %}
+    {% if data.topology_kind %}<span class="chip hero">topology: {{ data.topology_kind }}</span>
+    <span class="chip">{{ data.n_actuators }} actuator(s)</span>{% endif %}
+    {% if data.rmse_holdout_deg %}<span class="chip">hold-out {{ data.rmse_holdout_deg }}&deg;</span>{% endif %}
+    {% if data.config and data.config.movement %}<span class="chip">task: {{ data.config.movement }}</span>{% endif %}
+    {% if data.actuator and not data.joints and not data.actuator.fits %}<span class="chip bad">packaging!</span>{% endif %}
+    {% if data.actuator and data.actuator.custom_drive %}<span class="chip hero">custom drive synthesized</span>{% endif %}
+    {% if data.config and data.config.capture_verified is false %}<span class="chip bad">capture unverified</span>{% endif %}
+    {% if data.config and data.config.capture_verified %}<span class="chip ok">capture verified</span>{% endif %}
+  </div>
+  <div class="muted" style="margin-top:6px; font-size:13px">
+    source: {{ data.source or data.config.input or "—" }} &middot; created {{ data.created }}
+  </div>
+  {% if data.error %}
+  <div class="error-box" style="margin-top:12px">{{ data.error }}</div>
+  {% endif %}
+</div>
+
+{% if "body_scene.json" in data.artifacts %}
+<script type="importmap">
+  {"imports": {"three": "/static/three/three.module.min.js"}}
+</script>
+<div class="card" id="bodyviewer" aria-label="interactive full-body inspector">
+  <h2>Full-body robot — coupled joints, click to inspect</h2>
+  <div style="display:flex; gap:14px; flex-wrap:wrap">
+    <div style="flex:2; min-width:340px; position:relative">
+      <canvas style="width:100%; height:520px; border-radius:8px; outline:none"></canvas>
+      <div class="bv-hud" style="position:absolute; left:10px; bottom:10px; font:12px monospace; color:#cfe0f0; background:#00000088; padding:3px 8px; border-radius:6px"></div>
+    </div>
+    <div class="bv-panel" style="flex:1; min-width:260px; font-size:13px"></div>
+  </div>
+  <div style="display:flex; gap:14px; align-items:center; margin-top:8px">
+    <button type="button" class="bv-play">pause</button>
+    <input type="range" class="bv-scrub" min="0" value="0" step="1"
+           style="flex:1" aria-label="scrub body frames">
+  </div>
+  <div class="bv-status muted" aria-live="polite" style="font-size:12px; margin-top:4px"></div>
+  <p class="muted" style="font-size:12px; margin-bottom:0">
+    Coupled design, distal-first: each proximal joint was evolved carrying the
+    hardware mass of the joints below it and against the load profile the
+    recorded distal motion produces. Reaction torques from distal acceleration
+    are <strong>not</strong> modelled. Keys: Tab cycle joints &middot; space
+    play/pause &middot; , . step.</p>
+  <style>.bv-grid{display:grid;grid-template-columns:auto 1fr;gap:3px 12px}
+    .bv-grid span{color:#8fa1b3}.bv-panel h3{color:#ffd9a0}</style>
+  <script type="module">
+    import { initBodyViewer } from "/static/body_viewer.js";
+    initBodyViewer(document.getElementById("bodyviewer"), "/runs/{{ name }}/f/");
+  </script>
+</div>
+{% endif %}
+
+{% if "scene.json" in data.artifacts %}
+{% if "body_scene.json" not in data.artifacts %}
+<script type="importmap">
+  {"imports": {"three": "/static/three/three.module.min.js"}}
+</script>
+{% endif %}
+<div class="card" id="viewer3d" aria-label="interactive 3D anatomical scene">
+  <h2>3D anatomical view — evolved mechanism on the joint</h2>
+  <div class="v3d-wrap" style="position:relative">
+    <canvas style="width:100%; height:460px; border-radius:8px; outline:none"></canvas>
+    <div class="v3d-labels" style="position:absolute; inset:0; pointer-events:none; overflow:hidden"></div>
+    <div class="v3d-hud" style="position:absolute; left:10px; bottom:10px; font:12px monospace; color:#cfe0f0; background:#00000088; padding:3px 8px; border-radius:6px"></div>
+    <div class="v3d-fallback" style="display:none">
+      {% if "scene_preview.png" in data.artifacts %}
+      <img class="artifact" src="/runs/{{ name }}/f/scene_preview.png" alt="rendered anatomical scene">
+      {% endif %}
+    </div>
+  </div>
+  <div style="display:flex; gap:14px; flex-wrap:wrap; align-items:center; margin-top:8px">
+    <button type="button" class="v3d-play">pause</button>
+    <input type="range" class="v3d-scrub" min="0" value="0" step="1"
+           style="flex:1; min-width:160px" aria-label="scrub movement frames">
+    {% for l in ["tissue","bone","mechanism","force","labels","axis","rom"] %}
+    <label style="font-size:12px"><input type="checkbox" class="v3d-layer"
+      data-layer="{{ l }}" {% if l != "tissue" %}checked{% endif %}> {{ l }}</label>
+    {% endfor %}
+  </div>
+  <div class="v3d-status muted" aria-live="polite" style="font-size:12px; margin-top:4px"></div>
+  <p class="muted" style="font-size:12px; margin-bottom:0">
+    <strong>Representative anatomy:</strong> parametric bone geometry scaled to the
+    measured segment lengths — not imaging of the participant. The drawn joint
+    axis is a <strong>fixed-revolute approximation</strong>; the real axis (knee
+    especially) migrates through flexion. Not modelled: ground reaction at the
+    ankle, inter-joint forces, out-of-plane motion.
+    Keys: space play/pause &middot; , . step &middot; 1–7 toggle layers &middot; arrows orbit.</p>
+  <style>
+    .v3d-label{position:absolute;top:0;left:0;font:11px system-ui;color:#e8eef6;
+      background:#0e141bcc;padding:1px 6px;border-radius:4px;white-space:nowrap;
+      border:1px solid #2a3a4c}
+    .v3d-joint{font-weight:600;color:#ffd9a0}
+  </style>
+  <script type="module">
+    import { initViewer } from "/static/viewer.js";
+    initViewer(document.getElementById("viewer3d"), "/runs/{{ name }}/f/");
+  </script>
+</div>
+{% endif %}
+
+{% if "usage_demo.gif" in data.artifacts %}
+<div class="card">
+  <h2>Real-world usage{% if data.usage %} — {{ data.usage.scenario }}{% endif %}</h2>
+  <img class="artifact" src="/runs/{{ name }}/f/usage_demo.gif" alt="usage demo">
+  {% if data.usage %}
+  <div style="margin-top:8px">
+    {% for j, u in data.usage.joints.items() %}
+    <span class="chip">{{ j }}: RMSE {{ u.rmse_deg }}&deg; &middot; {{ (100*u.utilization)|round|int }}% force{% if u.saturation_frac > 0.001 %} &middot; sat {{ (100*u.saturation_frac)|round(1) }}%{% endif %}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if "limb_demo.gif" in data.artifacts %}
+<div class="card">
+  <h2>Recorded movement — every joint driven by its evolved actuator</h2>
+  <img class="artifact" src="/runs/{{ name }}/f/limb_demo.gif" alt="limb animation">
+</div>
+{% endif %}
+
+{% if "demo.gif" in data.artifacts %}
+<div class="card">
+  <h2>Animated demo — recorded movement vs evolved prosthesis</h2>
+  <img class="artifact" src="/runs/{{ name }}/f/demo.gif" alt="animated demo">
+</div>
+{% endif %}
+
+{% for sec in joint_sections %}
+<div class="card">
+  <h2>Joint breakdown: {{ data.side }} {{ sec.name }}</h2>
+  <div style="margin-bottom:8px">
+    <span class="chip">ROM {{ sec.summary.rom_deg[0] }}–{{ sec.summary.rom_deg[1] }}&deg;</span>
+    <span class="chip">RMSE {{ sec.summary.rmse_deg }}&deg;</span>
+    <span class="chip">{{ sec.summary.mechanism.F_class_N }} N / {{ sec.summary.mechanism.v_class_mm_s }} mm/s</span>
+    <span class="chip">stroke {{ sec.summary.mechanism.stroke_mm }} mm</span>
+    <span class="chip">{{ sec.summary.actuator.recommended }} &middot; {{ sec.summary.actuator.motor }}</span>
+    <span class="chip">~{{ sec.summary.actuator.mass_g }} g &middot; {{ sec.summary.actuator.battery_h }} h</span>
+    {% if sec.summary.usage_check and sec.summary.usage_check.re_evolved %}
+    <span class="chip hero">re-evolved for the task</span>{% endif %}
+    {% if not sec.summary.actuator.fits %}<span class="chip bad">packaging!</span>{% endif %}
+  </div>
+  <div class="grid g2">
+    {% for img in sec.images %}<img class="artifact" src="/runs/{{ name }}/f/{{ img }}" alt="{{ img }}">{% endfor %}
+  </div>
+  {% if sec.stls %}
+  <h3>3D-printable parts</h3>
+  <div class="filelist">
+    {% for f in sec.stls %}<a href="/runs/{{ name }}/f/{{ f }}" download>{{ f.split("/")[-1] }}</a>{% endfor %}
+  </div>
+  {% endif %}
+  <details style="margin-top:8px"><summary>all files for this joint</summary>
+    <div class="filelist" style="margin-top:6px">
+      {% for f in sec.files %}<a href="/runs/{{ name }}/f/{{ f }}" target="_blank">{{ f.split("/")[-1] }}</a>{% endfor %}
+    </div>
+  </details>
+</div>
+{% endfor %}
+
+{% if "printable_preview.png" in data.artifacts or root_stls %}
+<div class="card">
+  <h2>3D-printable actuator demonstrator</h2>
+  {% if "printable_preview.png" in data.artifacts %}
+  <img class="artifact" src="/runs/{{ name }}/f/printable_preview.png" alt="3D print preview">
+  {% endif %}
+  <div class="filelist" style="margin-top:8px">
+    {% for f in root_stls %}<a href="/runs/{{ name }}/f/{{ f }}" download>{{ f }}</a>{% endfor %}
+  </div>
+  <p class="muted" style="font-size:13px">Print flat side down, PETG or PLA, 3+ perimeters.
+    Pins are Ø4 mm; holes have 0.4 mm clearance. Form/kinematics demonstrator — not load-bearing.</p>
+</div>
+{% endif %}
+
+{% if spec_html %}
+<div class="card spec">
+  <h2>Real-world actuator spec</h2>
+  {% if "actuator_drawing.png" in data.artifacts %}
+  <img class="artifact" src="/runs/{{ name }}/f/actuator_drawing.png" alt="actuator drawing"
+       style="margin-bottom:10px">
+  {% endif %}
+  {{ spec_html | safe }}
+</div>
+{% endif %}
+
+{% set plots = [("tracking.png", "Trajectory tracking + actuator force"),
+                ("mechanism_curves.png", "Mechanism characteristics"),
+                ("convergence.png", "Evolution convergence")] %}
+{% for f, title in plots if f in data.artifacts %}
+<div class="card">
+  <h2>{{ title }}</h2>
+  <img class="artifact" src="/runs/{{ name }}/f/{{ f }}" alt="{{ title }}">
+</div>
+{% endfor %}
+
+{% if pose_checks %}
+<div class="card">
+  <h2>Pose detection checks</h2>
+  <p class="muted" style="margin-top:0">Confirm the skeleton overlay matches the participant — if not, re-shoot with better light / side view.</p>
+  <div class="grid g2">
+    {% for f in pose_checks %}<img class="artifact" src="/runs/{{ name }}/f/{{ f }}" alt="{{ f }}">{% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if log_tail %}
+<div class="card">
+  <h2>Log</h2>
+  <pre class="console">{{ log_tail }}</pre>
+</div>
+{% endif %}
+
+<div class="card filelist">
+  <h2>All files</h2>
+  {% for f in data.artifacts %}<a href="/runs/{{ name }}/f/{{ f }}" target="_blank">{{ f }}</a>{% endfor %}
+</div>
+
+{% endblock %}

@@ -1,0 +1,559 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <h2>New run</h2>
+
+  <div class="mode-tabs" id="modeTabs">
+    <button data-mode="record" type="button">Record (guided + verified)</button>
+    <button data-mode="video" type="button">Upload video</button>
+    <button data-mode="photos" type="button">Upload photos</button>
+    <button data-mode="demo" type="button" class="active">Built-in demo</button>
+  </div>
+
+  <form id="runForm" novalidate>
+    <div class="grid g4" style="margin-bottom:12px">
+      <div><label>what to test</label>
+        <select name="target" id="targetSel">
+          <option value="single" selected>single joint</option>
+          <option value="limb">full limb (all joints)</option>
+        </select></div>
+      <div id="jointCol"><label>joint</label>
+        <select name="joint" id="jointSel">
+          <option value="auto" selected>auto-detect</option>
+          {% for j in joints %}<option value="{{ j }}">{{ j }}</option>{% endfor %}
+        </select></div>
+      <div id="limbCol" style="display:none"><label>limb</label>
+        <select name="limb" id="limbSel">
+          <option value="arm" selected>arm (shoulder + elbow)</option>
+          <option value="leg">leg (hip + knee + ankle)</option>
+          <option value="body">FULL BODY — 5 joints, coupled design</option>
+        </select></div>
+      <div><label>side</label>
+        <select name="side" id="sideSel">
+          <option value="auto" selected>auto</option>
+          <option value="left">left</option><option value="right">right</option>
+        </select></div>
+      <div><label>body mass (kg)</label>
+        <input type="number" name="body_mass" value="80" min="20" max="250"></div>
+    </div>
+
+    <div style="margin-bottom:12px">
+      <label>movement task (what the prosthetic must be able to do)</label>
+      <select name="movement" id="movementSel" style="max-width:420px"></select>
+      <div class="muted" id="movementDesc" style="font-size:13px; margin-top:4px"></div>
+    </div>
+
+    <!-- guided + verified recording -->
+    <div id="recordRow" style="display:none; margin-bottom:12px">
+      <div class="muted" style="font-size:13px; margin-bottom:8px">
+        The camera watches the movement live and only advances when each step is
+        actually performed; it will tell the participant how to adjust.
+        Place the device so the <strong>whole limb is visible from the side</strong>.
+        {{ safety }}
+      </div>
+      <div style="position:relative; max-width:640px">
+        <video id="camView" autoplay muted playsinline
+               style="width:100%; border-radius:10px; background:#000; display:none"></video>
+        <video id="playback" controls style="width:100%; border-radius:10px; display:none"></video>
+        <div id="overlay" style="position:absolute; inset:0; display:none;
+             flex-direction:column; justify-content:space-between; pointer-events:none">
+          <div id="coachTip" style="align-self:flex-start; margin:10px; background:rgba(160,60,30,.85);
+               color:#fff; font-size:13.5px; padding:6px 12px; border-radius:8px; display:none"></div>
+          <div>
+            <div id="instr" style="background:rgba(10,12,16,.78); color:#fff; font-size:17px;
+                 padding:12px 16px; text-align:center"></div>
+            <div id="phasebar" style="height:6px; background:var(--accent); width:0%"></div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap; align-items:center">
+        <button type="button" class="secondary" id="camBtn">Enable camera</button>
+        <button type="button" id="recBtn" disabled>Start guided recording</button>
+        <button type="button" class="secondary" id="skipBtn" style="display:none">Skip this check</button>
+        <button type="button" class="secondary" id="redoBtn" style="display:none">Re-record</button>
+        <span class="muted" id="recState" aria-live="polite"></span>
+      </div>
+      <div id="liveCoach" class="muted" style="font-size:13px; margin-top:6px" aria-live="polite"></div>
+      <div id="verifyBanner" style="display:none; margin-top:10px" class="error-box" role="alert"></div>
+    </div>
+
+    <!-- video upload -->
+    <div id="videoRow" style="display:none; margin-bottom:12px">
+      <label>movement video (.mov / .mp4 / .webm)</label>
+      <input type="file" name="video" accept="video/*,.mov,.mp4,.m4v,.avi,.mkv,.webm">
+      <details style="margin-top:8px" open><summary>what the participant should do on camera</summary>
+        <ol class="muted" id="uploadInstr" style="font-size:13.5px; margin:8px 0 0"></ol>
+        <div class="muted" style="font-size:12.5px">{{ safety }} The recording is checked
+          after upload and rejected if it doesn't contain the movement.</div>
+      </details>
+    </div>
+
+    <!-- photos upload -->
+    <div id="photosRow" style="display:none; margin-bottom:12px">
+      <label>photos of the movement (select many; ordered by filename)</label>
+      <input type="file" name="photos" multiple accept="image/*,.heic,.heif">
+      <div style="margin-top:8px; max-width:220px">
+        <label>photos taken per second</label>
+        <input type="number" name="photo_fps" value="4" step="0.1" min="0.2">
+      </div>
+      <details style="margin-top:8px"><summary>what the photos should show</summary>
+        <ol class="muted" id="photoInstr" style="font-size:13.5px; margin:8px 0 0"></ol>
+        <div class="muted" style="font-size:12.5px">Shoot a burst through the whole movement. {{ safety }}</div>
+      </details>
+    </div>
+
+    <div id="demoRow" class="muted" style="margin-bottom:12px">
+      Runs the pipeline on synthetic movement — no camera needed. Limb demos include
+      the real-world usage simulation (walking / pick &amp; place).
+    </div>
+
+    <details>
+      <summary>advanced (evolution, 3D print, rotation)</summary>
+      <div class="grid g4" style="margin-top:10px">
+        <div><label>population</label><input type="number" name="pop" value="160" min="20" max="600"></div>
+        <div><label>generations</label><input type="number" name="generations" value="120" min="10" max="1000"></div>
+        <div><label>seed</label><input type="number" name="seed" value="0" min="0"></div>
+        <div><label>design engine</label>
+          <select name="engine"><option value="legacy" selected>legacy (linear actuator)</option>
+            <option value="graph">open topology (evolves mechanisms)</option></select></div>
+        <div><label>topology (graph engine)</label>
+          <select name="topology"><option value="auto" selected>auto (structural search)</option>
+            <option value="direct_linear">direct linear</option>
+            <option value="four_bar">four-bar</option>
+            <option value="rotary_direct">rotary</option></select></div>
+        <div><label>rotate frames</label>
+          <select name="rotate"><option value="0" selected>0&deg;</option>
+            <option value="90">90&deg;</option><option value="180">180&deg;</option>
+            <option value="270">270&deg;</option></select></div>
+        <div><label>run label (optional)</label>
+          <input type="text" name="label" placeholder="e.g. push-test"></div>
+      </div>
+      <label style="margin-top:10px"><input type="checkbox" name="stl" checked>
+        generate 3D-printable STL parts</label>
+    </details>
+
+    <div style="margin-top:16px; display:flex; gap:12px; align-items:center">
+      <button id="goBtn" type="submit">Run pipeline</button>
+      <span id="runState" class="muted" aria-live="polite"></span>
+    </div>
+  </form>
+
+  <pre class="console" id="console" style="display:none; margin-top:14px" aria-live="polite"></pre>
+</div>
+
+<div class="card">
+  <h2>Runs <span class="muted" id="runCount"></span></h2>
+  <div class="runcards" id="runCards"><span class="muted">loading…</span></div>
+</div>
+
+<script>
+const MOVEMENTS = {{ movements | tojson }};
+const FREE_CAPTURE = {{ free_capture | tojson }};
+let mode = "demo";
+const $ = (id) => document.getElementById(id);
+const tabs = $("modeTabs");
+
+// UI state - declared before any init-time call that reads it
+let stream = null, coach = {at: 0, detected: false, side: null, per_joint: {}, tips: []};
+let coachTimer = null, coachBusy = false;
+const coachCanvas = document.createElement("canvas");
+let recorder = null, chunks = [], recordedBlob = null, recording = false;
+let phaseTimer = null, skippedChecks = 0, verified = false;
+let coachLog = [], phaseLog = [], recStart = 0;
+
+function targetInfo() {
+  const limb = $("targetSel").value === "limb";
+  return limb ? { kind: "limb", name: $("limbSel").value }
+              : { kind: "joint", name: $("jointSel").value };
+}
+
+function movementOptions() {
+  const t = targetInfo();
+  const keys = Object.keys(MOVEMENTS).filter(k => {
+    const mt = MOVEMENTS[k].target;
+    return t.kind === "limb" ? mt.limb === t.name : mt.joint === t.name;
+  });
+  const sel = $("movementSel");
+  const prev = sel.value;
+  sel.innerHTML = keys.map(k => `<option value="${k}">${MOVEMENTS[k].label}</option>`).join("")
+    + `<option value="">free movement (no task verification)</option>`;
+  if (keys.includes(prev) || prev === "") sel.value = prev;
+  $("movementDesc").textContent = sel.value && MOVEMENTS[sel.value]
+    ? MOVEMENTS[sel.value].description : "Any slow, full-range movement of the selected joint.";
+}
+
+function currentPhases() {
+  const k = $("movementSel").value;
+  if (k && MOVEMENTS[k]) return MOVEMENTS[k].phases;
+  // guided FREE capture: no task selected but a concrete joint is - guide a
+  // calibration hold + slow sweeps + fast reps + mid hold (all the data a
+  // joint design needs), live-verified like any task
+  const t = targetInfo();
+  if (t.kind === "joint" && t.name !== "auto" && FREE_CAPTURE[t.name])
+    return FREE_CAPTURE[t.name].phases;
+  return null;
+}
+
+function taskJoints() {
+  const t = targetInfo();
+  if (t.kind === "limb") return {arm: ["shoulder", "elbow"], leg: ["hip", "knee", "ankle"],
+    body: ["shoulder", "elbow", "hip", "knee", "ankle"]}[t.name] || [];
+  return t.name === "auto" ? [] : [t.name];
+}
+
+function renderModeUI() {
+  $("recordRow").style.display = mode === "record" ? "" : "none";
+  $("videoRow").style.display = mode === "video" ? "" : "none";
+  $("photosRow").style.display = mode === "photos" ? "" : "none";
+  $("demoRow").style.display = mode === "demo" ? "" : "none";
+  const limb = $("targetSel").value === "limb";
+  $("jointCol").style.display = limb ? "none" : "";
+  $("limbCol").style.display = limb ? "" : "none";
+  movementOptions();
+  const phases = currentPhases();
+  const fill = (el) => {
+    el.innerHTML = phases
+      ? phases.map(p => `<li>${p.instruction} <span class="muted">(~${p.seconds} s)</span></li>`).join("")
+      : "<li>Move the joint slowly through its full comfortable range, 3+ times, filmed side-on.</li>";
+  };
+  fill($("uploadInstr")); fill($("photoInstr"));
+  refreshRecBtn();
+}
+tabs.addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  mode = b.dataset.mode;
+  for (const x of tabs.querySelectorAll("button")) x.classList.toggle("active", x === b);
+  if (mode !== "record") stopCamera();
+  renderModeUI();
+});
+for (const id of ["targetSel", "jointSel", "limbSel"])
+  $(id).addEventListener("change", renderModeUI);
+$("movementSel").addEventListener("change", () => {
+  $("movementDesc").textContent = $("movementSel").value
+    ? MOVEMENTS[$("movementSel").value].description
+    : "Any slow, full-range movement of the selected joint.";
+  renderModeUI2();
+});
+function renderModeUI2() {  // refresh instruction lists without rebuilding the select
+  const phases = currentPhases();
+  const fill = (el) => {
+    el.innerHTML = phases
+      ? phases.map(p => `<li>${p.instruction} <span class="muted">(~${p.seconds} s)</span></li>`).join("")
+      : "<li>Move the joint slowly through its full comfortable range, 3+ times, filmed side-on.</li>";
+  };
+  fill($("uploadInstr")); fill($("photoInstr"));
+}
+renderModeUI();
+
+// ---- live coach ------------------------------------------------------------
+
+async function coachTick() {
+  if (!stream || coachBusy) return;
+  const videoEl = $("camView");
+  if (!videoEl.videoWidth) return;
+  coachBusy = true;
+  try {
+    const w = 480, h = Math.round(videoEl.videoHeight * w / videoEl.videoWidth);
+    coachCanvas.width = w; coachCanvas.height = h;
+    coachCanvas.getContext("2d").drawImage(videoEl, 0, 0, w, h);
+    const blob = await new Promise(r => coachCanvas.toBlob(r, "image/jpeg", 0.55));
+    const fd = new FormData();
+    fd.set("frame", blob, "f.jpg");
+    fd.set("joints", taskJoints().join(","));
+    fd.set("side", $("sideSel").value);
+    const res = await fetch("/api/coach", { method: "POST", body: fd });
+    const j = await res.json();
+    coach = { at: Date.now(), ...j };
+    if (recording && j.detected) {
+      // client-side angle timeline: saved with the run for cross-validation
+      // against the server's own pose extraction
+      const angles = {};
+      for (const [name, pj] of Object.entries(j.per_joint))
+        if (pj.visible && pj.angle != null) angles[name] = +pj.angle.toFixed(1);
+      coachLog.push({ t: +(((performance.now() - recStart) / 1000).toFixed(2)),
+                      side: j.side, angles });
+    }
+    const parts = [];
+    if (!j.detected) parts.push("no person detected");
+    else {
+      parts.push(`tracking ${j.side} side`);
+      for (const [name, pj] of Object.entries(j.per_joint))
+        parts.push(pj.visible ? `${name} ${pj.angle.toFixed(0)}°` : `${name} not visible`);
+    }
+    $("liveCoach").textContent = "live check: " + parts.join(" · ");
+  } catch (e) { /* transient */ }
+  coachBusy = false;
+}
+
+function refreshRecBtn() {
+  const btn = $("recBtn");
+  if (btn) btn.disabled = !(stream && currentPhases()) || recording;
+}
+
+function stopCamera() {
+  if (coachTimer) { clearInterval(coachTimer); coachTimer = null; }
+  if (stream) { for (const tr of stream.getTracks()) tr.stop(); stream = null; }
+  coach = { at: 0, detected: false, side: null, per_joint: {}, tips: [] };
+  const cam = $("camView");
+  if (cam) { cam.srcObject = null; }
+  $("liveCoach").textContent = "";
+  refreshRecBtn();
+}
+
+async function enableCamera() {
+  stopCamera();
+  try {
+    stream = await navigator.mediaDevices.getUserMedia(
+      { video: { width: 1280, height: 720 }, audio: false });
+    $("camView").srcObject = stream;
+    $("camView").style.display = ""; $("playback").style.display = "none";
+    $("recState").textContent = currentPhases() ? "camera ready — live check running"
+      : "pick a movement task first";
+    coachTimer = setInterval(coachTick, 450);
+    refreshRecBtn();
+  } catch (err) { $("recState").textContent = "camera unavailable: " + err.message; }
+}
+
+$("camBtn").addEventListener("click", enableCamera);
+
+// ---- guided, verified recorder ----------------------------------------------
+function pickMime() {
+  for (const m of ["video/mp4", "video/webm;codecs=vp9", "video/webm"])
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
+  return "";
+}
+
+function checkMet(check) {
+  if (!check) return true;
+  if (Date.now() - coach.at > 1600 || !coach.detected) return false;
+  if (check.visible) {
+    const pj = coach.per_joint;
+    return taskJoints().every(j => pj[j] && pj[j].visible);
+  }
+  const pj = coach.per_joint[check.joint];
+  if (!pj || !pj.visible || pj.angle === null) return false;
+  if ("above" in check) return pj.angle >= check.above;
+  if ("below" in check) return pj.angle <= check.below;
+  return true;
+}
+
+function checkHint(check) {
+  if (Date.now() - coach.at > 1600 || !coach.detected)
+    return "Can't see you — step back, add light";
+  if (check.visible) return "Keep the whole limb visible from the side";
+  const pj = coach.per_joint[check.joint];
+  if (!pj || !pj.visible) return `Can't see the ${check.joint} — adjust your position`;
+  if ("above" in check) return `Go further: ${check.joint} at ${pj.angle.toFixed(0)}°, needs ${check.above}°+`;
+  if ("below" in check) return `Keep going: ${check.joint} at ${pj.angle.toFixed(0)}°, needs ${check.below}° or less`;
+  return "";
+}
+
+$("recBtn").addEventListener("click", () => {
+  const phases = currentPhases();
+  if (!stream || !phases) return;
+  chunks = []; recordedBlob = null; skippedChecks = 0; verified = false;
+  coachLog = []; phaseLog = []; recStart = performance.now();
+  $("verifyBanner").style.display = "none";
+  $("playback").style.display = "none";     // a previous take must not cover the live view
+  $("camView").style.display = "";
+  const mime = pickMime();
+  try {
+    recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+  } catch (err) {
+    $("recState").textContent = "recording not supported here: " + err.message;
+    return;
+  }
+  recording = true;
+  recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+  recorder.onstop = onRecorded;
+  recorder.start(250);
+  $("overlay").style.display = "flex";
+  $("recBtn").disabled = true;
+
+  let i = -1, phaseStart = 0, currentCheck = null, waitingSkip = null;
+  const advance = () => {
+    if (i >= 0) phaseLog.push({ phase: i,
+      done_s: +(((performance.now() - recStart) / 1000).toFixed(2)), skipped: false });
+    i += 1;
+    $("skipBtn").style.display = "none";
+    if (i >= phases.length) { stopRec(); return; }
+    phaseStart = Date.now();
+    currentCheck = phases[i].check || null;
+    $("instr").textContent = `${i + 1}/${phases.length}  ${phases[i].instruction}`;
+  };
+  waitingSkip = () => { skippedChecks += 1;
+    if (phaseLog.length) phaseLog[phaseLog.length - 1].skipped = true;
+    advance(); };
+  $("skipBtn").onclick = () => waitingSkip();
+  advance();
+
+  phaseTimer = setInterval(() => {
+    if (i >= phases.length) return;
+    const ph = phases[i];
+    const elapsed = (Date.now() - phaseStart) / 1000;
+    if (!currentCheck) {
+      const left = ph.seconds - elapsed;
+      $("phasebar").style.width = `${100 * Math.max(0, left) / ph.seconds}%`;
+      $("recState").textContent = `recording — ${Math.max(0, left).toFixed(0)} s`;
+      if (left <= 0) advance();
+      return;
+    }
+    // requirement-checked phase
+    $("phasebar").style.width = `${Math.min(100, 100 * elapsed / (ph.seconds * 2.5))}%`;
+    if (checkMet(currentCheck)) {
+      $("recState").textContent = "step verified ✓";
+      $("coachTip").style.display = "none";
+      advance();
+      return;
+    }
+    $("recState").textContent = "recording — waiting for the movement…";
+    if (elapsed > ph.seconds * 1.2) {
+      $("coachTip").textContent = checkHint(currentCheck);
+      $("coachTip").style.display = "";
+    }
+    if (elapsed > ph.seconds * 2.5) $("skipBtn").style.display = "";
+  }, 180);
+});
+
+function stopRec() {
+  if (phaseTimer) clearInterval(phaseTimer);
+  recording = false;
+  if (recorder && recorder.state !== "inactive") recorder.stop();
+  $("recBtn").disabled = false;
+  $("coachTip").style.display = "none";
+}
+
+function onRecorded() {
+  recordedBlob = new Blob(chunks, { type: recorder.mimeType || "video/webm" });
+  verified = skippedChecks === 0;
+  stopCamera();  // participant is done - camera light goes off, coach stops
+  $("camView").style.display = "none";
+  $("overlay").style.display = "none";
+  const pb = $("playback");
+  if (pb.src) URL.revokeObjectURL(pb.src);
+  pb.src = URL.createObjectURL(recordedBlob);
+  pb.style.display = "";
+  $("redoBtn").style.display = "";
+  if (verified) {
+    $("recState").textContent =
+      `movement verified ✓ (${(recordedBlob.size / 1e6).toFixed(1)} MB) — press Run pipeline`;
+  } else {
+    $("recState").textContent = "recording finished with unverified steps";
+    $("verifyBanner").style.display = "";
+    $("verifyBanner").textContent =
+      `${skippedChecks} step(s) could not be verified. Re-record for a clean dataset, ` +
+      "or run anyway - the server will still reject it if the movement is missing.";
+  }
+}
+
+$("redoBtn").addEventListener("click", () => {
+  recordedBlob = null;
+  const pb = $("playback");
+  if (pb.src) { URL.revokeObjectURL(pb.src); pb.removeAttribute("src"); }
+  pb.style.display = "none";
+  $("redoBtn").style.display = "none";
+  $("verifyBanner").style.display = "none";
+  enableCamera();
+});
+
+// ---- submit + poll ---------------------------------------------------------
+const form = $("runForm"), consoleEl = $("console"), stateEl = $("runState"), goBtn = $("goBtn");
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fd = new FormData(form);
+  fd.set("mode", mode === "record" ? "video" : mode);
+  if (mode === "record" && coach.side && $("sideSel").value === "auto" &&
+      Date.now() - coach.at < 5000)
+    fd.set("side", coach.side);
+  if (mode === "record") {
+    if (!recordedBlob) return alert("Record the movement first (Enable camera → Start guided recording).");
+    const mt = recordedBlob.type || "";
+    const ext = mt.includes("mp4") ? "mp4" : mt.includes("matroska") ? "mkv" : "webm";
+    fd.set("video", new File([recordedBlob], `guided-recording.${ext}`, { type: mt }));
+    fd.set("capture_verified", verified ? "1" : "0");
+    if (coachLog.length || phaseLog.length)
+      fd.set("coach_log", JSON.stringify({ samples: coachLog, phases: phaseLog,
+                                           skipped_checks: skippedChecks }));
+    fd.set("skipped_checks", String(skippedChecks));
+  }
+  if (mode === "video" && !(fd.get("video") && fd.get("video").name))
+    return alert("Choose a video file first.");
+  if (mode === "photos") {
+    const files = form.querySelector("[name=photos]").files;
+    if (!files || files.length < 4) return alert("Choose at least 4 photos.");
+  }
+  goBtn.disabled = true;
+  stateEl.textContent = "uploading…";
+  consoleEl.style.display = ""; consoleEl.textContent = "";
+  try {
+    const r = await fetch("/api/run", { method: "POST", body: fd });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.statusText);
+    stateEl.textContent = "running: " + j.run;
+    poll(j.job, j.run, 0);
+  } catch (err) {
+    stateEl.textContent = "";
+    consoleEl.textContent = "ERROR: " + err.message;
+    goBtn.disabled = false;
+  }
+});
+
+async function poll(job, run, since, fails = 0) {
+  try {
+    const r = await fetch(`/api/status/${job}?since=${since}`);
+    if (!r.ok) throw new Error(`status ${r.status}`);
+    const j = await r.json();
+    if (j.lines.length) {
+      consoleEl.textContent += j.lines.join("\n") + "\n";
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+    }
+    if (j.state === "running") return setTimeout(() => poll(job, run, j.total, 0), 700);
+    if (j.state === "done") { window.location = "/run/" + run; return; }
+    stateEl.textContent = "failed";
+    consoleEl.textContent += "\nRun failed" + (j.error ? ": " + j.error : "") +
+      `\nDetails: /run/${run}\n`;
+    goBtn.disabled = false;
+    loadRuns();
+  } catch (e) {
+    if (fails >= 5) {
+      stateEl.textContent = "lost contact with the run";
+      consoleEl.textContent += `\nLost contact with the server — if it restarted, ` +
+        `check /run/${run} once it finishes.\n`;
+      goBtn.disabled = false;
+      return;
+    }
+    setTimeout(() => poll(job, run, since, fails + 1), 1500);
+  }
+}
+
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
+  (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+
+async function loadRuns() {
+  const el = $("runCards");
+  const runs = await (await fetch("/api/runs")).json();
+  $("runCount").textContent = runs.length ? `(${runs.length})` : "";
+  if (!runs.length) { el.innerHTML = '<span class="muted">No runs yet — start one above.</span>'; return; }
+  el.innerHTML = runs.map(r => {
+    const badge = r.status === "done" ? '<span class="chip ok">done</span>'
+      : r.status === "running" ? '<span class="chip run">running</span>'
+      : '<span class="chip bad">failed</span>';
+    const img = r.has_thumb
+      ? `<img loading="lazy" src="/runs/${encodeURIComponent(r.name)}/f/thumb.png" alt="">`
+      : `<div class="noimg">no preview</div>`;
+    const meta = r.status === "done"
+      ? `${esc(r.side)} ${esc(r.joint)} &middot; RMSE ${esc(r.rmse_deg)}&deg;` +
+        (r.actuator ? ` &middot; ${esc(r.actuator)}` : "")
+      : esc(r.error ? String(r.error).slice(0, 80) : "…");
+    return `<div class="runcard"><a href="/run/${encodeURIComponent(r.name)}">${img}
+      <div class="body"><div class="name">${esc(r.name)}</div>
+      <div class="meta">${badge} ${meta}</div>
+      <div class="meta">${esc(r.created)}</div></div></a></div>`;
+  }).join("");
+}
+loadRuns();
+setInterval(loadRuns, 5000);
+</script>
+{% endblock %}

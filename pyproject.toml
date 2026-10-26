@@ -1,0 +1,9 @@
+[project]
+name = "prosthetic-pipeline"
+version = "0.2.0"
+description = "Movement footage -> evolved prosthetic actuator joints -> specs, STLs and usage simulation"
+requires-python = ">=3.9"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

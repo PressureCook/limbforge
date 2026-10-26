@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Prosthetic pipeline{% endblock %}</title>
+<style>
+  :root {
+    --bg: #14161a; --panel: #1d2026; --card: #1e222a; --line: #313845;
+    --text: #e8e9ec; --muted: #9aa3b2; --accent: #e05c2a; --accent2: #5f9ed1;
+    --ok: #4caf7d; --bad: #d95555;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  a { color: var(--accent2); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  header { padding: 18px 28px; border-bottom: 1px solid var(--line);
+           display: flex; align-items: baseline; gap: 14px; }
+  header h1 { font-size: 19px; margin: 0; }
+  header h1 a { color: var(--text); }
+  header .sub { color: var(--muted); font-size: 13px; }
+  main { max-width: 1060px; margin: 0 auto; padding: 24px 28px 60px; }
+  .card { background: var(--card); border: 1px solid var(--line);
+          border-radius: 10px; padding: 18px 20px; margin-bottom: 22px; }
+  h2 { font-size: 16px; margin: 4px 0 12px; }
+  h3 { font-size: 15px; margin: 18px 0 8px; color: var(--accent); }
+  h4 { font-size: 14px; margin: 14px 0 6px; }
+  .muted { color: var(--muted); }
+  .chip { display: inline-block; padding: 2px 10px; border-radius: 999px;
+          font-size: 12.5px; border: 1px solid var(--line); margin-right: 6px;
+          color: var(--muted); }
+  .chip.ok { color: var(--ok); border-color: var(--ok); }
+  .chip.bad { color: var(--bad); border-color: var(--bad); }
+  .chip.run { color: var(--accent2); border-color: var(--accent2); }
+  .chip.hero { color: var(--accent); border-color: var(--accent); }
+  button, .btn { background: var(--accent); color: #fff; border: 0;
+          padding: 9px 20px; border-radius: 8px; font-size: 15px; cursor: pointer; }
+  button:disabled { background: #5a5f6a; cursor: default; }
+  button.secondary { background: transparent; border: 1px solid var(--line);
+                     color: var(--text); }
+  input[type=text], input[type=number], select {
+    background: var(--bg); color: var(--text); border: 1px solid var(--line);
+    border-radius: 7px; padding: 7px 10px; font-size: 14px; width: 100%; }
+  input[type=file] { color: var(--muted); font-size: 13.5px; }
+  label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 3px; }
+  .grid { display: grid; gap: 14px; }
+  .g4 { grid-template-columns: repeat(4, 1fr); }
+  .g2 { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 760px) { .g4, .g2 { grid-template-columns: 1fr 1fr; } }
+  pre.console { background: #0d0f12; border: 1px solid var(--line); border-radius: 8px;
+       padding: 12px 14px; font: 12px/1.45 ui-monospace, Menlo, monospace;
+       max-height: 320px; overflow: auto; white-space: pre-wrap; color: #b9c3d0; }
+  img.artifact { max-width: 100%; border-radius: 8px; border: 1px solid var(--line);
+                 background: #fff; }
+  .runcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+  .runcard { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+             overflow: hidden; transition: border-color .15s; }
+  .runcard:hover { border-color: var(--accent); }
+  .runcard a { color: var(--text); display: block; }
+  .runcard img { width: 100%; aspect-ratio: 16/10; object-fit: cover; display: block;
+                 background: #fff; }
+  .runcard .noimg { width: 100%; aspect-ratio: 16/10; display: flex; align-items: center;
+                 justify-content: center; color: var(--muted); background: #171a20; }
+  .runcard .body { padding: 10px 12px 12px; }
+  .runcard .name { font-size: 13.5px; font-weight: 600; word-break: break-all; }
+  .runcard .meta { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+  .mode-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+  .mode-tabs button { background: transparent; border: 1px solid var(--line);
+                      color: var(--muted); padding: 7px 16px; }
+  .mode-tabs button.active { border-color: var(--accent); color: var(--accent); }
+  details { margin-top: 10px; }
+  summary { cursor: pointer; color: var(--muted); font-size: 13.5px; }
+  .spec ul { margin: 6px 0 12px; padding-left: 22px; }
+  .spec li { margin: 2px 0; }
+  .spec code { background: #0d0f12; padding: 1px 6px; border-radius: 5px; font-size: 13px; }
+  .filelist a { display: inline-block; margin: 3px 10px 3px 0; font-size: 13.5px; }
+  .error-box { border: 1px solid var(--bad); background: #2a1d1d; color: #f0c0c0;
+               border-radius: 8px; padding: 12px 16px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="/">Prosthetic actuator pipeline</a></h1>
+  <span class="sub">movement &rarr; evolved joint &rarr; simulated prosthesis &rarr; real-world actuator</span>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>
